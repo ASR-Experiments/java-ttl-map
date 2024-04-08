@@ -1,3 +1,4 @@
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,8 +42,7 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
     public V put(K key, V value) {
         Value<V> newValue = new Value<>(value, new Thread(() -> {
             try {
-                Thread.sleep(DEFAULT_TTL);
-                internalMap.remove(key);
+                threadFactory(key);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -74,8 +74,7 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
                         Entry::getKey,
                         e -> new Value<>(e.getValue(), new Thread(() -> {
                             try {
-                                Thread.sleep(DEFAULT_TTL);
-                                internalMap.remove(e.getKey());
+                                threadFactory(e.getKey());
                             } catch (InterruptedException ex) {
                                 throw new RuntimeException(ex);
                             }
@@ -112,5 +111,16 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
                         Entry::getKey,
                         e -> e.getValue().value));
         return transformedMap.entrySet();
+    }
+
+    private void threadFactory(K key) throws InterruptedException {
+        Thread.sleep(DEFAULT_TTL);
+        internalMap.remove(key);
+        System.out.printf(
+                "Thread:%s (%s) => Key: %s removed\n",
+                Thread.currentThread().getName(),
+                new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()),
+                key
+        );
     }
 }
