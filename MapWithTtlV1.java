@@ -2,13 +2,32 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * This class represents a Map with a Time-To-Live (TTL) feature.
+ * Each key-value pair in the map will be automatically removed after a certain period of time.
+ * The default TTL is 60000 milliseconds (1 minute).
+ *
+ * @param <K> the type of keys maintained by this map
+ * @param <V> the type of mapped values
+ */
 public class MapWithTtlV1<K, V> implements Map<K, V> {
 
+    /**
+     * The default TTL in milliseconds.
+     */
     public static final int DEFAULT_TTL = 60000;
 
+    /**
+     * A record that holds the value and the thread associated with it.
+     *
+     * @param <V> the type of the value
+     */
     private record Value<V>(V value, Thread t) {
     }
 
+    /**
+     * The internal map that holds the keys and their associated values.
+     */
     private final Map<K, Value<V>> internalMap = new HashMap<>();
 
     @Override
@@ -38,6 +57,14 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
         return potentialValue == null ? null : potentialValue.value;
     }
 
+    /**
+     * Associates the specified value with the specified key in this map.
+     * If the map previously contained a mapping for the key, the old value is replaced and the old thread is interrupted.
+     *
+     * @param key   the key with which the specified value is to be associated
+     * @param value the value to be associated with the specified key
+     * @return the previous value associated with key, or null if there was no mapping for key
+     */
     @Override
     public V put(K key, V value) {
         Value<V> newValue = new Value<>(value, new Thread(() -> {
@@ -56,6 +83,13 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
         return null;
     }
 
+    /**
+     * Removes the mapping for a key from this map if it is present.
+     * The thread associated with the key is also interrupted.
+     *
+     * @param key the key whose mapping is to be removed from the map
+     * @return the previous value associated with key, or null if there was no mapping for key
+     */
     @Override
     public V remove(Object key) {
         Value<V> removedValue = internalMap.remove(key);
@@ -66,6 +100,12 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
         return null;
     }
 
+    /**
+     * Copies all of the mappings from the specified map to this map.
+     * The effect of this call is equivalent to that of calling put(k, v) on this map once for each mapping from key k to value v in the specified map.
+     *
+     * @param m mappings to be stored in this map
+     */
     @Override
     public void putAll(Map<? extends K, ? extends V> m) {
         Map<K, Value<V>> updatedMap = m.entrySet()
@@ -82,6 +122,11 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
         internalMap.putAll(updatedMap);
     }
 
+    /**
+     * Removes all of the mappings from this map.
+     * The map will be empty after this call returns.
+     * All threads associated with the keys are also interrupted.
+     */
     @Override
     public void clear() {
         List<Thread> threadList = new ArrayList<>();
@@ -113,6 +158,12 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
         return transformedMap.entrySet();
     }
 
+    /**
+     * A factory method to create a thread that sleeps for the default TTL and then removes the key from the map.
+     *
+     * @param key the key to be removed after the default TTL
+     * @throws InterruptedException if any thread has interrupted the current thread
+     */
     private void threadFactory(K key) throws InterruptedException {
         Thread.sleep(DEFAULT_TTL);
         internalMap.remove(key);

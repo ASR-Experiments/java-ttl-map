@@ -1,5 +1,4 @@
 import java.text.SimpleDateFormat;
-import java.time.Instant;
 
 public class Runner {
     public static void main(String[] args) throws InterruptedException {
