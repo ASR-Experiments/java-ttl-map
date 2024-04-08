@@ -1,5 +1,9 @@
-import java.text.SimpleDateFormat;
+package src.map;
+
+import src.utilities.Common;
+
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -10,7 +14,13 @@ import java.util.stream.Collectors;
  * @param <K> the type of keys maintained by this map
  * @param <V> the type of mapped values
  */
-public class MapWithTtlV1<K, V> implements Map<K, V> {
+public class MapWithTtlV2<K, V> implements Map<K, V> {
+
+    private static final Logger LOGGER;
+
+    static {
+        LOGGER = Common.getLogger(MapWithTtlV2.class);
+    }
 
     /**
      * The default TTL in milliseconds.
@@ -67,15 +77,14 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
      */
     @Override
     public V put(K key, V value) {
-        Value<V> newValue = new Value<>(value, new Thread(() -> {
+        Value<V> newValue = new Value<>(value, Thread.startVirtualThread(() -> {
             try {
-                threadFactory(key);
+                ttlLogic(key);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }));
         Value<V> originalValue = internalMap.put(key, newValue);
-        newValue.t.start();
         if (originalValue != null) {
             originalValue.t.interrupt();
             return originalValue.value;
@@ -112,13 +121,14 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
                 .stream()
                 .collect(Collectors.toMap(
                         Entry::getKey,
-                        e -> new Value<>(e.getValue(), new Thread(() -> {
-                            try {
-                                threadFactory(e.getKey());
-                            } catch (InterruptedException ex) {
-                                throw new RuntimeException(ex);
-                            }
-                        }))));
+                        e -> new Value<>(e.getValue(),
+                                Thread.startVirtualThread(() -> {
+                                    try {
+                                        ttlLogic(e.getKey());
+                                    } catch (InterruptedException ex) {
+                                        throw new RuntimeException(ex);
+                                    }
+                                }))));
         internalMap.putAll(updatedMap);
     }
 
@@ -164,14 +174,13 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
      * @param key the key to be removed after the default TTL
      * @throws InterruptedException if any thread has interrupted the current thread
      */
-    private void threadFactory(K key) throws InterruptedException {
+    private void ttlLogic(K key) throws InterruptedException {
         Thread.sleep(DEFAULT_TTL);
         internalMap.remove(key);
-        System.out.printf(
-                "Thread:%s (%s) => Key: %s removed\n",
-                Thread.currentThread().getName(),
-                new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()),
+        LOGGER.info(() -> String.format(
+                "Thread:%s => Key: %s removed due to TTL.",
+                Common.getThreadName(),
                 key
-        );
+        ));
     }
 }

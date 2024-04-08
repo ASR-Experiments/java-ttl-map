@@ -1,14 +1,27 @@
-import java.text.SimpleDateFormat;
+package src;
+
+import src.map.MapWithTtlV2;
+import src.utilities.Common;
+
 import java.util.Scanner;
+import java.util.logging.Logger;
 
 /**
  * Runner programmed to load test the MapWithTtlV1 class.
  */
 public class RunnerV2 {
+
+    private static final Logger LOGGER;
+
+    static {
+        LOGGER = Common.getLogger(RunnerV2.class);
+    }
+
+
     public static void main(String[] args) throws InterruptedException {
         MapWithTtlV2<Integer, String> testMap = new MapWithTtlV2<>();
         Scanner sc = new Scanner(System.in);
-        System.out.println("Enter the number of elements to be added to the map:");
+        LOGGER.warning("Enter the number of elements to be added to the map:");
         final int n = sc.nextInt();
         for (int i = 0; i < n; i++) {
             testMap.put(i, "Value" + i);
@@ -17,17 +30,17 @@ public class RunnerV2 {
         do {
             for (int j = 0; j < n; j++) {
                 // Try getting it after TTL
-                System.out.printf(
-                        "Thread:%s at (%s) => Key: %d, Value: %s\n",
-                        Thread.currentThread().getName(),
-                        new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new java.util.Date()),
-                        j,
-                        testMap.get(j)
-                );
+                int finalJ = j;
+                LOGGER.info(() -> String.format(
+                        "Thread:%s => Key: %d, Value: %s",
+                        Common.getThreadName(),
+                        finalJ,
+                        testMap.get(finalJ)
+                ));
             }
             Thread.sleep(5000);
             i++;
         } while (i < 5);
-        System.out.println("Exiting RunnerV2 ...");
+        LOGGER.info("Exiting RunnerV2 ...");
     }
 }

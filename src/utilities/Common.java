@@ -29,7 +29,7 @@ public final class Common {
      * @throws RuntimeException if there is an IOException when reading the 'logging.properties' file
      */
     public static <T> Logger getLogger(Class<T> className) {
-        InputStream stream = className.getClassLoader().getResourceAsStream("logging.properties");
+        InputStream stream = className.getClassLoader().getResourceAsStream("src/main/resources/logging.properties");
         try {
             LogManager.getLogManager().readConfiguration(stream);
         } catch (IOException e) {

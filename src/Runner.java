@@ -1,3 +1,7 @@
+package src;
+
+import src.map.MapWithTtlV1;
+
 import java.text.SimpleDateFormat;
 
 public class Runner {
@@ -9,14 +13,14 @@ public class Runner {
         do {
             // Try getting it after TTL
             System.out.printf(
-                    "Thread:%s at (%s) => Key: %d, Value: %s\n",
+                    "Thread:%s at (%s) => Key: %d, Value: %s%n",
                     Thread.currentThread().getName(),
                     new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new java.util.Date()),
                     1,
                     testMap.get(1)
             );
             System.out.printf(
-                    "Thread:%s at (%s) => Key: %d, Value: %s\n",
+                    "Thread:%s at (%s) => Key: %d, Value: %s%n",
                     Thread.currentThread().getName(),
                     new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new java.util.Date()),
                     2,
