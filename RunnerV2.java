@@ -6,7 +6,7 @@ import java.util.Scanner;
  */
 public class RunnerV2 {
     public static void main(String[] args) throws InterruptedException {
-        MapWithTtlV1<Integer, String> testMap = new MapWithTtlV1<>();
+        MapWithTtlV2<Integer, String> testMap = new MapWithTtlV2<>();
         Scanner sc = new Scanner(System.in);
         System.out.println("Enter the number of elements to be added to the map:");
         final int n = sc.nextInt();
