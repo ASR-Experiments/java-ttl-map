@@ -15,7 +15,7 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
     /**
      * The default TTL in milliseconds.
      */
-    public static final int DEFAULT_TTL = 60000;
+    public static final int DEFAULT_TTL = 15000;
 
     /**
      * A record that holds the value and the thread associated with it.
