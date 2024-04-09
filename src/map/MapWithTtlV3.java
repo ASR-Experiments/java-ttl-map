@@ -2,6 +2,7 @@ package src.map;
 
 import src.utilities.Common;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -35,7 +36,7 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
      *
      * @param <V> the type of the value
      */
-    private record Value<V>(V value, Future<?> t) {
+    private record Value<V>(V value, Future<?> t, Instant validTill) {
     }
 
     /**
@@ -70,6 +71,13 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
     @Override
     public V get(Object key) {
         Value<V> potentialValue = internalMap.get(key);
+        if (potentialValue != null && Instant.now().isAfter(potentialValue.validTill)) {
+            LOGGER.warning(() -> String.format(
+                    "Thread:%s => Key: %s doesn't exist",
+                    Common.getThreadName(),
+                    key));
+            return null;
+        }
         return potentialValue == null ? null : potentialValue.value;
     }
 
@@ -83,13 +91,17 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
      */
     @Override
     public V put(K key, V value) {
-        Value<V> newValue = new Value<>(value, executor.submit(() -> {
-            try {
-                ttlLogic(key);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }));
+        Value<V> newValue = new Value<>(
+                value,
+                executor.submit(() -> {
+                    try {
+                        ttlLogic(key);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }),
+                Instant.now().plusMillis(DEFAULT_TTL)
+        );
         Value<V> originalValue = internalMap.put(key, newValue);
         if (originalValue != null) {
             originalValue.t.cancel(true);
@@ -137,7 +149,8 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
                                                         throw new RuntimeException(ex);
                                                     }
                                                 }
-                                        )
+                                        ),
+                                        Instant.now().plusMillis(DEFAULT_TTL)
                                 )
                         )
                 );
@@ -161,19 +174,25 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
 
     @Override
     public Set<K> keySet() {
-        return internalMap.keySet();
+        return internalMap.entrySet().stream()
+                .filter(vValue -> Instant.now().isBefore(vValue.getValue().validTill))
+                .map(Entry::getKey)
+                .collect(Collectors.toSet());
     }
 
     @Override
     public Collection<V> values() {
         return internalMap.values().stream()
-                .map(Value::value).collect(Collectors.toList());
+                .filter(vValue -> Instant.now().isBefore(vValue.validTill))
+                .map(Value::value)
+                .collect(Collectors.toList());
     }
 
     @Override
     public Set<Entry<K, V>> entrySet() {
         Map<K, V> transformedMap = internalMap.entrySet()
                 .stream()
+                .filter(vValue -> Instant.now().isBefore(vValue.getValue().validTill))
                 .collect(Collectors.toMap(
                         Entry::getKey,
                         e -> e.getValue().value));
