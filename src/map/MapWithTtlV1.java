@@ -3,6 +3,7 @@ package src.map;
 import src.utilities.Common;
 
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -80,7 +81,7 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
     public V put(K key, V value) {
         Value<V> newValue = new Value<>(value, new Thread(() -> {
             try {
-                threadFactory(key);
+                MapWithTtlV1.this.threadFactory(key);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -184,5 +185,11 @@ public class MapWithTtlV1<K, V> implements Map<K, V> {
                 new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()),
                 key
         ));
+    }
+
+    private static void consumeThread(long timeInMs) {
+        while (Instant.now().plusMillis(timeInMs).isAfter(Instant.now())) {
+            // Do Nothing
+        }
     }
 }

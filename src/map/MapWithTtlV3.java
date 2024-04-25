@@ -4,6 +4,7 @@ import src.utilities.Common;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -15,12 +16,12 @@ import java.util.stream.Collectors;
  * @param <K> the type of keys maintained by this map
  * @param <V> the type of mapped values
  */
-public class MapWithTtlV2<K, V> implements Map<K, V> {
+public class MapWithTtlV3<K, V> implements Map<K, V> {
 
     private static final Logger LOGGER;
 
     static {
-        LOGGER = Common.getLogger(MapWithTtlV2.class);
+        LOGGER = Common.getLogger(MapWithTtlV3.class);
     }
 
     /**
@@ -33,13 +34,16 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
      *
      * @param <V> the type of the value
      */
-    private record Value<V>(V value, Thread t) {
+    private record Value<V>(V value, Future<?> t, Instant validTill) {
     }
 
     /**
      * The internal map that holds the keys and their associated values.
      */
     private final Map<K, Value<V>> internalMap = new HashMap<>();
+
+    private final ScheduledExecutorService executor =
+            new ScheduledThreadPoolExecutor(12);
 
     @Override
     public int size() {
@@ -65,6 +69,13 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
     @Override
     public V get(Object key) {
         Value<V> potentialValue = internalMap.get(key);
+        if (potentialValue != null && Instant.now().isAfter(potentialValue.validTill)) {
+            LOGGER.warning(() -> String.format(
+                    "Thread:%s => Key: %s doesn't exist",
+                    Common.getThreadName(),
+                    key));
+            return null;
+        }
         return potentialValue == null ? null : potentialValue.value;
     }
 
@@ -78,16 +89,18 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
      */
     @Override
     public V put(K key, V value) {
-        Value<V> newValue = new Value<>(value, Thread.startVirtualThread(() -> {
-            try {
-                ttlLogic(key);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }));
+        Value<V> newValue = new Value<>(
+                value,
+                executor.schedule(
+                        () -> removeKey(key),
+                        DEFAULT_TTL,
+                        TimeUnit.MILLISECONDS
+                ),
+                Instant.now().plusMillis(DEFAULT_TTL)
+        );
         Value<V> originalValue = internalMap.put(key, newValue);
         if (originalValue != null) {
-            originalValue.t.interrupt();
+            originalValue.t.cancel(true);
             return originalValue.value;
         }
         return null;
@@ -104,7 +117,7 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
     public V remove(Object key) {
         Value<V> removedValue = internalMap.remove(key);
         if (removedValue != null) {
-            removedValue.t.interrupt();
+            removedValue.t.cancel(true);
             return removedValue.value;
         }
         return null;
@@ -120,16 +133,20 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
     public void putAll(Map<? extends K, ? extends V> m) {
         Map<K, Value<V>> updatedMap = m.entrySet()
                 .stream()
-                .collect(Collectors.toMap(
-                        Entry::getKey,
-                        e -> new Value<>(e.getValue(),
-                                Thread.startVirtualThread(() -> {
-                                    try {
-                                        ttlLogic(e.getKey());
-                                    } catch (InterruptedException ex) {
-                                        throw new RuntimeException(ex);
-                                    }
-                                }))));
+                .collect(
+                        Collectors.toMap(
+                                Entry::getKey,
+                                e -> new Value<>(
+                                        e.getValue(),
+                                        executor.schedule(
+                                                () -> removeKey(e.getKey()),
+                                                DEFAULT_TTL,
+                                                TimeUnit.MILLISECONDS
+                                        ),
+                                        Instant.now().plusMillis(DEFAULT_TTL)
+                                )
+                        )
+                );
         internalMap.putAll(updatedMap);
     }
 
@@ -140,29 +157,35 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
      */
     @Override
     public void clear() {
-        List<Thread> threadList = new ArrayList<>();
+        List<Future<?>> threadList = new ArrayList<>();
         internalMap.values().stream()
                 .map(vValue -> vValue.t)
                 .forEach(threadList::add);
         internalMap.clear();
-        threadList.forEach(Thread::interrupt);
+        threadList.forEach(o -> o.cancel(true));
     }
 
     @Override
     public Set<K> keySet() {
-        return internalMap.keySet();
+        return internalMap.entrySet().stream()
+                .filter(vValue -> Instant.now().isBefore(vValue.getValue().validTill))
+                .map(Entry::getKey)
+                .collect(Collectors.toSet());
     }
 
     @Override
     public Collection<V> values() {
         return internalMap.values().stream()
-                .map(Value::value).collect(Collectors.toList());
+                .filter(vValue -> Instant.now().isBefore(vValue.validTill))
+                .map(Value::value)
+                .collect(Collectors.toList());
     }
 
     @Override
     public Set<Entry<K, V>> entrySet() {
         Map<K, V> transformedMap = internalMap.entrySet()
                 .stream()
+                .filter(vValue -> Instant.now().isBefore(vValue.getValue().validTill))
                 .collect(Collectors.toMap(
                         Entry::getKey,
                         e -> e.getValue().value));
@@ -177,8 +200,18 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
      */
     private void ttlLogic(K key) throws InterruptedException {
         Thread.sleep(DEFAULT_TTL);
-        internalMap.remove(key);
-//        consumeThread(1000);
+        removeKey(key);
+    }
+
+    private void removeKey(K key) {
+        Instant start = Instant.now();
+        consumeThread(1000, start);
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        internalMap.remove(key); // ~ns
         LOGGER.info(() -> String.format(
                 "Thread:%s => Key: %s removed due to TTL.",
                 Common.getThreadName(),
@@ -186,8 +219,8 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
         ));
     }
 
-    private static void consumeThread(long timeInMs) {
-        while (Instant.now().plusMillis(timeInMs).isAfter(Instant.now())) {
+    private static void consumeThread(long timeInMs, Instant start) {
+        while (start.plusMillis(timeInMs).isAfter(Instant.now())) {
             // Do Nothing
         }
     }

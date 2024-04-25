@@ -1,6 +1,6 @@
 package src;
 
-import src.map.MapWithTtlV2;
+import src.map.MapWithTtlV3;
 import src.utilities.Common;
 
 import java.util.Scanner;
@@ -19,7 +19,7 @@ public class RunnerV2 {
 
 
     public static void main(String[] args) throws InterruptedException {
-        MapWithTtlV2<Integer, String> testMap = new MapWithTtlV2<>();
+        MapWithTtlV3<Integer, String> testMap = new MapWithTtlV3<>();
         Scanner sc = new Scanner(System.in);
         LOGGER.warning("Enter the number of elements to be added to the map:");
         final int n = sc.nextInt();
