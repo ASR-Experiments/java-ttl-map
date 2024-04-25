@@ -4,9 +4,7 @@ import src.utilities.Common;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -44,8 +42,8 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
      */
     private final Map<K, Value<V>> internalMap = new HashMap<>();
 
-    private final ThreadPoolExecutor executor =
-            (ThreadPoolExecutor) Executors.newFixedThreadPool(10);
+    private final ScheduledExecutorService executor =
+            new ScheduledThreadPoolExecutor(12);
 
     @Override
     public int size() {
@@ -93,13 +91,11 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
     public V put(K key, V value) {
         Value<V> newValue = new Value<>(
                 value,
-                executor.submit(() -> {
-                    try {
-                        ttlLogic(key);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }),
+                executor.schedule(
+                        () -> removeKey(key),
+                        DEFAULT_TTL,
+                        TimeUnit.MILLISECONDS
+                ),
                 Instant.now().plusMillis(DEFAULT_TTL)
         );
         Value<V> originalValue = internalMap.put(key, newValue);
@@ -142,13 +138,10 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
                                 Entry::getKey,
                                 e -> new Value<>(
                                         e.getValue(),
-                                        executor.submit(() -> {
-                                                    try {
-                                                        ttlLogic(e.getKey());
-                                                    } catch (InterruptedException ex) {
-                                                        throw new RuntimeException(ex);
-                                                    }
-                                                }
+                                        executor.schedule(
+                                                () -> removeKey(e.getKey()),
+                                                DEFAULT_TTL,
+                                                TimeUnit.MILLISECONDS
                                         ),
                                         Instant.now().plusMillis(DEFAULT_TTL)
                                 )
@@ -207,11 +200,28 @@ public class MapWithTtlV3<K, V> implements Map<K, V> {
      */
     private void ttlLogic(K key) throws InterruptedException {
         Thread.sleep(DEFAULT_TTL);
-        internalMap.remove(key);
+        removeKey(key);
+    }
+
+    private void removeKey(K key) {
+        Instant start = Instant.now();
+        consumeThread(1000, start);
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        internalMap.remove(key); // ~ns
         LOGGER.info(() -> String.format(
                 "Thread:%s => Key: %s removed due to TTL.",
                 Common.getThreadName(),
                 key
         ));
+    }
+
+    private static void consumeThread(long timeInMs, Instant start) {
+        while (start.plusMillis(timeInMs).isAfter(Instant.now())) {
+            // Do Nothing
+        }
     }
 }

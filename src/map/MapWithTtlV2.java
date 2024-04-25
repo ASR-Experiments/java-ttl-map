@@ -2,6 +2,7 @@ package src.map;
 
 import src.utilities.Common;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -177,10 +178,17 @@ public class MapWithTtlV2<K, V> implements Map<K, V> {
     private void ttlLogic(K key) throws InterruptedException {
         Thread.sleep(DEFAULT_TTL);
         internalMap.remove(key);
+//        consumeThread(1000);
         LOGGER.info(() -> String.format(
                 "Thread:%s => Key: %s removed due to TTL.",
                 Common.getThreadName(),
                 key
         ));
+    }
+
+    private static void consumeThread(long timeInMs) {
+        while (Instant.now().plusMillis(timeInMs).isAfter(Instant.now())) {
+            // Do Nothing
+        }
     }
 }
